@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>worksheet-grab 아키텍처</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0f1117; font-family: 'Segoe UI', system-ui, sans-serif; color: #e2e8f0; min-height: 100vh; padding: 24px; }
+  h1 { text-align: center; font-size: 22px; font-weight: 700; color: #f8fafc; margin-bottom: 6px; letter-spacing: -0.3px; }
+  .subtitle { text-align: center; font-size: 13px; color: #64748b; margin-bottom: 28px; }
+
+  .canvas { position: relative; width: 100%; max-width: 1100px; margin: 0 auto; }
+
+  /* ── 레이어 행 ── */
+  .row { display: flex; gap: 12px; align-items: center; margin-bottom: 10px; justify-content: center; }
+  .row.spaced { margin-bottom: 18px; }
+
+  /* ── 노드 ── */
+  .node {
+    border-radius: 10px; padding: 10px 16px; font-size: 12.5px; font-weight: 600;
+    text-align: center; line-height: 1.4; min-width: 130px; position: relative;
+    transition: transform .15s, box-shadow .15s; cursor: default;
+  }
+  .node:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,.4); }
+  .node .label { font-size: 10px; font-weight: 400; opacity: .7; display: block; margin-top: 2px; }
+  .node .code { font-size: 10px; font-family: monospace; opacity: .65; display: block; margin-top: 2px; }
+
+  /* 색상 테마 */
+  .n-input  { background: #1e3a5f; border: 1.5px solid #3b82f6; color: #93c5fd; }
+  .n-cli    { background: #1a1a2e; border: 1.5px solid #7c3aed; color: #c4b5fd; min-width: 220px; font-size: 13.5px; }
+  .n-data   { background: #1a2e1a; border: 1.5px solid #16a34a; color: #86efac; }
+  .n-engine { background: #2e1a1a; border: 1.5px solid #dc2626; color: #fca5a5; }
+  .n-gate   { background: #2e2a1a; border: 1.5px solid #d97706; color: #fcd34d; min-width: 110px; }
+  .n-output { background: #1a2535; border: 1.5px solid #0ea5e9; color: #7dd3fc; }
+  .n-edit   { background: #1e1a2e; border: 1.5px solid #8b5cf6; color: #ddd6fe; }
+  .n-ai     { background: #2e1a25; border: 1.5px solid #ec4899; color: #f9a8d4; }
+  .n-store  { background: #1a2520; border: 1.5px solid #059669; color: #6ee7b7; }
+  .n-pass   { background: #14291a; border: 1.5px solid #22c55e; color: #4ade80; }
+  .n-fail   { background: #291414; border: 1.5px solid #ef4444; color: #f87171; }
+
+  /* ── 화살표 ── */
+  .arrow { display: flex; align-items: center; justify-content: center; color: #475569; font-size: 20px; flex-shrink: 0; }
+  .arrow.down { transform: rotate(90deg); }
+  .arrow.label { flex-direction: column; gap: 2px; }
+  .arrow .alabel { font-size: 10px; color: #64748b; writing-mode: horizontal-tb; transform: none; }
+
+  /* ── 섹션 구분선 ── */
+  .divider { width: 100%; max-width: 1100px; margin: 6px auto 14px; border: none; border-top: 1px dashed #1e293b; }
+  .section-label { text-align: center; font-size: 11px; color: #475569; letter-spacing: 1px; text-transform: uppercase; margin: 0 auto 10px; max-width: 1100px; }
+
+  /* ── 그룹 박스 ── */
+  .group {
+    border: 1px solid #1e293b; border-radius: 12px; padding: 14px 16px 10px;
+    position: relative; background: #0d1117;
+  }
+  .group-title {
+    position: absolute; top: -10px; left: 16px; background: #0f1117;
+    font-size: 10.5px; color: #64748b; padding: 0 6px; letter-spacing: .5px;
+  }
+
+  /* ── 범례 ── */
+  .legend { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 24px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #94a3b8; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+
+  /* ── 뱃지 ── */
+  .badge { display: inline-block; font-size: 9px; padding: 1px 5px; border-radius: 4px; margin-left: 4px; vertical-align: middle; }
+  .badge-green { background: #14532d; color: #4ade80; }
+  .badge-yellow { background: #422006; color: #fbbf24; }
+  .badge-blue { background: #1e3a5f; color: #7dd3fc; }
+
+  /* ── SVG 연결선 캔버스 ── */
+  #svg-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+</style>
+</head>
+<body>
+<h1>worksheet-grab 프로젝트 아키텍처</h1>
+<p class="subtitle">2022 개정 교육과정 기반 로컬 활동지 생성·편집·검수·내보내기 도구</p>
+
+<div class="canvas" id="canvas">
+
+  <!-- ── 입력 레이어 ── -->
+  <div class="section-label">▸ 입력</div>
+  <div class="row spaced">
+    <div class="node n-ai">
+      🤖 AI 하네스
+      <span class="label">Claude Code · Codex · Antigravity</span>
+      <span class="code">CLAUDE.md / AGENTS.md</span>
+    </div>
+    <div class="arrow">↔</div>
+    <div class="node n-input" style="min-width:200px;">
+      👩‍🏫 교사 입력
+      <span class="label">학년·교과·주제</span>
+      <span class="code">예) 초6사회 가계와기업</span>
+    </div>
+  </div>
+
+  <div class="row"><div class="arrow down" style="color:#7c3aed;">↓</div></div>
+
+  <!-- ── CLI 레이어 ── -->
+  <div class="section-label">▸ CLI 진입점</div>
+  <div class="row spaced">
+    <div class="node n-cli" style="min-width: 520px;">
+      ⚙️ worksheet-grab CLI
+      <span class="label">bin/worksheet-grab.js · src/cli/index.js</span>
+      <div style="display:flex; gap:8px; justify-content:center; margin-top:8px; flex-wrap:wrap;">
+        <span class="badge badge-blue">pipeline</span>
+        <span class="badge badge-blue">generate</span>
+        <span class="badge badge-blue">compose</span>
+        <span class="badge badge-blue">edit</span>
+        <span class="badge badge-blue">edit-ui</span>
+        <span class="badge badge-blue">doc</span>
+        <span class="badge badge-blue">workbook</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="row"><div class="arrow down" style="color:#dc2626;">↓</div></div>
+
+  <!-- ── 데이터 조회 레이어 ── -->
+  <div class="section-label">▸ 데이터 조회</div>
+  <div class="row spaced">
+    <div class="node n-data">
+      📋 성취기준 CSV
+      <span class="label">data/achievement-standards.csv</span>
+      <span class="code">3,285건 · 2022 개정 교육과정</span>
+    </div>
+    <div class="arrow">↔</div>
+    <div class="node n-data" style="opacity:.6;">
+      🌐 GEPAI MCP
+      <span class="label">선택적 연결 (gepai-mcp)</span>
+      <span class="code">MCP 실패 시 CSV 폴백</span>
+    </div>
+    <div class="arrow" style="margin-left:20px;">+</div>
+    <div class="node n-data">
+      🧱 블록 라이브러리
+      <span class="label">blocks/ · archetypes.json</span>
+      <span class="code">13 아키타입 · 23 시각 조직자</span>
+    </div>
+    <div class="arrow">+</div>
+    <div class="node n-data">
+      🎨 테마
+      <span class="label">themes/ · design-tokens.json</span>
+      <span class="code">중립 팔레트 · 교과 팔레트</span>
+    </div>
+  </div>
+
+  <div class="row"><div class="arrow down" style="color:#dc2626;">↓</div></div>
+
+  <!-- ── 엔진 레이어 ── -->
+  <div class="section-label">▸ 조립 엔진 (결정적 — AI 호출 없음)</div>
+  <div class="row spaced">
+    <div class="node n-engine">
+      🔩 GenerateWorksheet
+      <span class="label">성취기준 검색 + 교과 템플릿 조립</span>
+      <span class="code">src/usecases/GenerateWorksheet.js</span>
+    </div>
+    <div class="arrow">→</div>
+    <div class="node n-engine">
+      🔩 AssembleWorksheet
+      <span class="label">블록 → HTML 조립</span>
+      <span class="code">src/usecases/AssembleWorksheet.js</span>
+    </div>
+    <div class="arrow">→</div>
+    <div class="node n-engine">
+      🔩 BuildVariants
+      <span class="label">MODE_TOKEN 치환</span>
+      <span class="code">src/usecases/BuildVariants.js</span>
+    </div>
+  </div>
+
+  <div class="row"><div class="arrow down" style="color:#d97706;">↓</div></div>
+
+  <!-- ── 검수 게이트 ── -->
+  <div class="section-label">▸ 안전 검수 게이트</div>
+  <div class="row spaced">
+    <div class="node n-gate" style="min-width:300px;">
+      🛡️ ValidateWorksheet
+      <span class="label">정답 누출 · 하드코딩 교과색 · 최소폰트</span>
+      <span class="code">src/usecases/ValidateWorksheet.js</span>
+    </div>
+    <div class="arrow">→</div>
+    <div class="node n-pass">✅ PASS<span class="label">출력 계속</span></div>
+    <div class="arrow" style="margin-left:16px; opacity:.5;">/</div>
+    <div class="node n-fail">❌ FAIL<span class="label">학생용 차단</span></div>
+  </div>
+
+  <div class="row"><div class="arrow down" style="color:#0ea5e9;">↓</div></div>
+
+  <!-- ── 출력 레이어 ── -->
+  <div class="section-label">▸ 출력</div>
+  <div class="row spaced">
+    <div class="node n-output">
+      📄 학생용 HTML
+      <span class="label">정답 제거</span>
+      <span class="code">*-student.html</span>
+    </div>
+    <div class="node n-output">
+      📄 교사용 HTML
+      <span class="label">정답 표시</span>
+      <span class="code">*-teacher.html</span>
+    </div>
+    <div class="arrow">→</div>
+    <div class="node n-output">
+      🖨️ Chrome 렌더
+      <span class="label">헤드리스 PDF/PNG</span>
+      <span class="code">src/adapters/ChromeRenderer.js</span>
+    </div>
+    <div class="arrow">→</div>
+    <div class="node n-output">
+      📑 PDF · PNG
+      <span class="label">A4 인쇄용</span>
+      <span class="code">*-student.pdf / *-teacher.pdf</span>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <!-- ── 편집 흐름 ── -->
+  <div class="section-label">▸ 브라우저 편집 흐름</div>
+  <div class="row spaced">
+    <div class="node n-edit">
+      🖥️ edit-ui 서버
+      <span class="label">127.0.0.1 전용</span>
+      <span class="code">src/adapters/EditorHttpServer.js</span>
+    </div>
+    <div class="arrow">→</div>
+    <div class="node n-edit">
+      ✏️ 브라우저 편집기
+      <span class="label">폰트·B/I/U·표·이미지·정답표시</span>
+      <span class="code">src/editor/editor.html</span>
+    </div>
+    <div class="arrow">→</div>
+    <div class="node n-gate">
+      🛡️ 저장 게이트
+      <span class="label">누출 3중 방어</span>
+    </div>
+    <div class="arrow">→</div>
+    <div class="node n-store">
+      🗂️ SaveDocument
+      <span class="label">manifest · 히스토리 스냅샷</span>
+      <span class="code">worksheets/&lt;문서명&gt;/</span>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <!-- ── 자료집 흐름 ── -->
+  <div class="section-label">▸ 자료집(합본) 흐름</div>
+  <div class="row spaced">
+    <div class="node n-store">
+      📚 WorkbookAssemble
+      <span class="label">여러 문서 슬라이스 합본</span>
+      <span class="code">workbooks/&lt;명&gt;/</span>
+    </div>
+    <div class="arrow">→</div>
+    <div class="node n-store">
+      🖨️ WorkbookExport
+      <span class="label">목차·표지·PDF 2벌</span>
+      <span class="code">workbook-student.pdf</span>
+    </div>
+    <div class="arrow" style="margin-left:20px;">+</div>
+    <div class="node n-edit" style="opacity:.8;">
+      📊 Canva / PPTX
+      <span class="label">네이티브 개체 내보내기</span>
+      <span class="code">--canva / --pptx</span>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── 범례 ── -->
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:#3b82f6;"></div>입력·AI</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#7c3aed;"></div>CLI</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#16a34a;"></div>데이터</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#dc2626;"></div>엔진 (결정적)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#d97706;"></div>검수 게이트</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#0ea5e9;"></div>출력</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#8b5cf6;"></div>편집기</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#059669;"></div>문서 저장소</div>
+</div>
+
+<p style="text-align:center; margin-top:18px; font-size:11px; color:#334155;">
+  worksheet-grab v0.6.0-beta · 2022 개정 교육과정 · MIT License
+</p>
+
+</body>
+</html>
