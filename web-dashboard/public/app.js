@@ -48,14 +48,15 @@ async function init() {
     fetch('/api/archetypes').then((r) => r.json()),
   ]);
 
-  const subjectSelect = $('#subject');
-  subjectSelect.innerHTML = subjectsRes.subjects.map((s) => `<option value="${s.key}">${s.key}</option>`).join('');
-
+  state.allSubjects = subjectsRes.subjects;
   state.archetypes = archRes.archetypes;
+
+  renderSubjectOptions();
   renderArchetypeCards();
 
-  subjectSelect.addEventListener('change', () => { renderArchetypeCards(); searchStandardsPreview(); });
-  $('#school').addEventListener('change', updateGradeOptions);
+  const subjectSelect = $('#subject');
+  subjectSelect.addEventListener('change', () => { renderArchetypeCards(); searchStandardsPreview(); loadUnitBrowser(); });
+  $('#school').addEventListener('change', () => { updateGradeOptions(); renderSubjectOptions(); });
   updateGradeOptions();
 
   ['topic', 'school', 'gradeNum', 'subject'].forEach((id) => {
@@ -194,6 +195,22 @@ async function searchStandardsPreview() {
     box.classList.add('hidden');
     state.standardsFound = null; // 조회 실패는 차단하지 않음(네트워크 문제 등)
   }
+}
+
+// 학교급에 맞는 교과만 드롭다운에 남긴다(예: 초등학교 선택 시 "미적분Ⅰ"·"확률과 통계" 등
+// 고등학교 전용 과목은 목록에서 빠진다). 이전에 선택돼 있던 교과가 새 학교급에도 있으면 유지.
+function renderSubjectOptions() {
+  const school = $('#school').value;
+  const subjectSelect = $('#subject');
+  const prev = subjectSelect.value;
+  const filtered = (state.allSubjects || []).filter((s) => s.school.includes(school));
+
+  subjectSelect.innerHTML = filtered.map((s) => `<option value="${s.key}">${s.key}</option>`).join('');
+  if (filtered.some((s) => s.key === prev)) subjectSelect.value = prev;
+
+  renderArchetypeCards();
+  searchStandardsPreview();
+  loadUnitBrowser();
 }
 
 function updateGradeOptions() {
