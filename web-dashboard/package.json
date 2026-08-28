@@ -1,0 +1,13 @@
+{
+  "name": "worksheet-grab-web-dashboard",
+  "version": "1.0.0",
+  "description": "worksheet-grab CLI를 감싸는 로컬 웹 대시보드 (아키타입 선택 + LLM 저작)",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "express": "^5.2.1"
+  }
+}
