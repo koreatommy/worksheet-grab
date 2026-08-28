@@ -34,6 +34,7 @@ const state = {
   llmProvider: 'anthropic',
   archetypes: [],
   result: null,
+  standardsFound: null, // null=미확인, true/false
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -52,9 +53,62 @@ async function init() {
   state.archetypes = archRes.archetypes;
   renderArchetypeCards();
 
-  subjectSelect.addEventListener('change', renderArchetypeCards);
+  subjectSelect.addEventListener('change', () => { renderArchetypeCards(); searchStandardsPreview(); });
   $('#school').addEventListener('change', updateGradeOptions);
   updateGradeOptions();
+
+  ['topic', 'school', 'gradeNum', 'subject'].forEach((id) => {
+    $('#' + id).addEventListener('input', debounce(searchStandardsPreview, 450));
+    $('#' + id).addEventListener('change', debounce(searchStandardsPreview, 200));
+  });
+  $('#standardsCodes').addEventListener('input', debounce(searchStandardsPreview, 300));
+}
+
+function debounce(fn, ms) {
+  let t;
+  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+}
+
+// ── 성취기준 실시간 미리보기 — 오타·범위 밖 주제를 3단계까지 가기 전에 알려준다. ──
+async function searchStandardsPreview() {
+  const box = $('#standardsPreview');
+  const topic = $('#topic').value.trim();
+  const codesRaw = $('#standardsCodes').value.trim();
+  if (codesRaw) { // 고급 설정에서 코드 직접 지정 시 미리보기 생략(자동조회 안 씀)
+    box.classList.add('hidden');
+    state.standardsFound = true;
+    return;
+  }
+  if (!topic) { box.classList.add('hidden'); state.standardsFound = null; return; }
+
+  const school = $('#school').value;
+  const subject = $('#subject').value;
+
+  box.className = 'standards-preview loading';
+  box.textContent = '🔎 성취기준 조회 중...';
+
+  try {
+    const params = new URLSearchParams({ school, subject, keyword: topic, limit: 5 });
+    const r = await fetch('/api/standards/search?' + params.toString());
+    const data = await r.json();
+    const results = data.results || [];
+
+    if (results.length === 0) {
+      state.standardsFound = false;
+      box.className = 'standards-preview empty';
+      box.innerHTML = `❌ "${escapeHtml(topic)}"와 일치하는 성취기준을 찾지 못했습니다.
+        <span class="tip">💡 오타를 확인하거나 더 짧은 핵심어로 시도해 보세요(예: "자기소개", "광합성"). 특정 성취기준을 이미 알고 있다면 아래 "고급 설정"에서 코드를 직접 입력하세요.</span>`;
+    } else {
+      state.standardsFound = true;
+      box.className = 'standards-preview found';
+      box.innerHTML = `✅ 성취기준 ${results.length}건 찾음:` +
+        results.slice(0, 3).map((s) => `<div class="std-item"><b>${s.code}</b> ${escapeHtml(s.text).slice(0, 60)}${s.text.length > 60 ? '…' : ''}</div>`).join('');
+    }
+    box.classList.remove('hidden');
+  } catch {
+    box.classList.add('hidden');
+    state.standardsFound = null; // 조회 실패는 차단하지 않음(네트워크 문제 등)
+  }
 }
 
 function updateGradeOptions() {
@@ -115,8 +169,21 @@ function goToStep(n) {
   $$('.step').forEach((el) => el.classList.toggle('active', Number(el.dataset.step) === n));
 }
 
-$('#toStep2').addEventListener('click', () => {
-  if (!$('#topic').value.trim()) { alert('주제(단원명)를 입력해 주세요.'); return; }
+$('#toStep2').addEventListener('click', async () => {
+  const topic = $('#topic').value.trim();
+  if (!topic) { alert('주제(단원명)를 입력해 주세요.'); return; }
+
+  // 아직 조회하지 않았다면(디바운스 대기 중 등) 즉시 한 번 더 확인.
+  if (state.standardsFound === null) await searchStandardsPreview();
+
+  if (state.standardsFound === false) {
+    const proceed = confirm(
+      '이 주제와 일치하는 성취기준을 찾지 못했습니다.\n' +
+      '이대로 진행하면 "활동지 생성" 단계에서 실패합니다.\n\n' +
+      '그래도 계속 진행할까요? (권장: 취소 후 주제를 수정하거나 고급 설정에서 성취기준 코드를 직접 입력하세요)'
+    );
+    if (!proceed) return;
+  }
   goToStep(2);
 });
 $('#backTo1').addEventListener('click', () => goToStep(1));
@@ -195,7 +262,7 @@ $('#generateBtn').addEventListener('click', async () => {
     showResult(data);
     goToStep(4);
   } catch (e) {
-    $('#errorBox').textContent = '❌ ' + e.message;
+    $('#errorBox').innerHTML = formatErrorMessage(e.message);
     $('#errorBox').classList.remove('hidden');
   } finally {
     $('#progressBox').classList.add('hidden');
@@ -244,6 +311,18 @@ function loadTab(variant) {
   $('#previewFrame').src = url;
   $('#downloadCurrent').href = url;
   $('#downloadCurrent').setAttribute('download', `${state.result.topic}-${variant}.html`);
+}
+
+function formatErrorMessage(msg) {
+  if (msg.includes('성취기준을 찾지 못했습니다')) {
+    return `❌ 성취기준을 찾지 못했습니다.
+      <div style="margin-top:6px; font-size:12px;">
+        💡 1단계로 돌아가 주제의 오타를 확인하거나, 더 일반적인 핵심어로 바꿔 보세요.
+        (예: "저기소개" → "자기소개", "광합성 실험" → "광합성")<br>
+        정확한 성취기준 코드를 알고 있다면 "고급 설정"에서 직접 입력할 수 있습니다.
+      </div>`;
+  }
+  return '❌ ' + escapeHtml(msg);
 }
 
 function escapeHtml(s) {
