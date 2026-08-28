@@ -90,6 +90,43 @@ app.get('/api/standards/search', async (req, res) => {
   }
 });
 
+// ── 3.5) 단원(영역) 목록 — 학교급·학년·교과가 정해지면 CSV의 성취기준을
+// 코드 중간 영역 번호(예: [6사06-01]의 "06")로 묶어 "단원처럼" 보여준다.
+// CSV에 별도 단원명 컬럼이 없으므로 임의 이름을 지어내지 않고, 각 영역의
+// 실제 성취기준 원문을 그대로 나열해 교사가 읽고 고르게 한다(창작 금지 원칙 유지).
+app.get('/api/units', async (req, res) => {
+  try {
+    const { school, subject, grade } = req.query;
+    if (!subject) return res.json({ groups: [] });
+    const results = await curriculum.search({
+      school: school || undefined,
+      subject,
+      grade: grade || undefined,
+      limit: 500,
+    });
+    res.json({ groups: groupByDomain(results) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+function domainOf(code) {
+  const m = /^\[?\d+[가-힣]+(\d+)-\d+\]?$/.exec(String(code).trim());
+  return m ? m[1] : '기타';
+}
+
+function groupByDomain(standards) {
+  const map = new Map();
+  for (const s of standards) {
+    const d = domainOf(s.code);
+    if (!map.has(d)) map.set(d, []);
+    map.get(d).push(s);
+  }
+  return [...map.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([domain, items]) => ({ domain, count: items.length, standards: items }));
+}
+
 // ── 4) 활동지 생성(핵심 파이프라인) ─────────────────────────────────────
 // 흐름: compose(결정적 구조) → LLM 저작(빈 슬롯 채움) → assemble → buildVariants → validate
 app.post('/api/generate', async (req, res) => {

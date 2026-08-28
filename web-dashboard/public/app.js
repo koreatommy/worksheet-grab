@@ -35,6 +35,7 @@ const state = {
   archetypes: [],
   result: null,
   standardsFound: null, // null=미확인, true/false
+  autoFilledTopic: '', // 단원 목록에서 고른 값으로 자동 채운 주제(사용자가 직접 고치면 덮어쓰지 않음)
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -62,6 +63,83 @@ async function init() {
     $('#' + id).addEventListener('change', debounce(searchStandardsPreview, 200));
   });
   $('#standardsCodes').addEventListener('input', debounce(searchStandardsPreview, 300));
+
+  ['school', 'gradeNum', 'subject'].forEach((id) => {
+    $('#' + id).addEventListener('change', debounce(loadUnitBrowser, 150));
+  });
+  loadUnitBrowser();
+}
+
+// ── 단원(성취기준) 브라우저 — 학교급·학년·교과가 정해지면 실제 CSV 성취기준을
+// 영역별로 묶어 목록으로 보여주고, 체크하면 주제·성취기준을 자동으로 채운다. ──
+async function loadUnitBrowser() {
+  const box = $('#unitGroups');
+  const subject = $('#subject').value;
+  if (!subject) return;
+  const school = $('#school').value;
+  const gradeNum = $('#gradeNum').value;
+
+  box.innerHTML = '<div class="unit-loading">🔎 단원 목록을 불러오는 중...</div>';
+  try {
+    const params = new URLSearchParams({ school, subject, grade: gradeNum });
+    const r = await fetch('/api/units?' + params.toString());
+    const data = await r.json();
+    renderUnitGroups(data.groups || []);
+  } catch {
+    box.innerHTML = '<div class="unit-loading">단원 목록을 불러오지 못했습니다.</div>';
+  }
+}
+
+function renderUnitGroups(groups) {
+  const box = $('#unitGroups');
+  if (groups.length === 0) {
+    box.innerHTML = '<div class="unit-loading">이 조합에 해당하는 성취기준이 없습니다. 학교급·학년·교과를 다시 확인하세요.</div>';
+    return;
+  }
+  box.innerHTML = groups.map((g, gi) => `
+    <details class="unit-group" ${gi === 0 ? 'open' : ''}>
+      <summary>영역 ${escapeHtml(g.domain)} <span class="count">${g.count}개 성취기준</span></summary>
+      <div class="unit-items">
+        ${g.standards.map((s) => `
+          <label class="unit-item">
+            <input type="checkbox" class="unit-check" data-code="${escapeAttr(s.code)}" data-text="${escapeAttr(s.text)}">
+            <span><b>${escapeHtml(s.code)}</b>${escapeHtml(s.text)}</span>
+          </label>`).join('')}
+      </div>
+    </details>`).join('');
+
+  box.querySelectorAll('.unit-check').forEach((cb) => cb.addEventListener('change', onUnitSelectionChange));
+}
+
+function onUnitSelectionChange() {
+  const checked = $$('.unit-check:checked');
+  const codes = checked.map((c) => c.dataset.code);
+  $('#standardsCodes').value = codes.join(',');
+
+  const box = $('#standardsPreview');
+  if (codes.length === 0) {
+    box.classList.add('hidden');
+    state.standardsFound = null;
+    return;
+  }
+
+  // 주제 입력이 비어 있거나 이전에 자동으로 채운 값 그대로일 때만 덮어쓴다(직접 수정한 값 보존).
+  const topicField = $('#topic');
+  if (!topicField.value.trim() || topicField.value === state.autoFilledTopic) {
+    const suggested = checked[0].dataset.text.split(/[.,]/)[0].slice(0, 24);
+    topicField.value = suggested;
+    state.autoFilledTopic = suggested;
+  }
+
+  state.standardsFound = true;
+  box.className = 'standards-preview found';
+  box.innerHTML = `✅ 선택한 성취기준 ${codes.length}건:` +
+    checked.map((c) => `<div class="std-item"><b>${escapeHtml(c.dataset.code)}</b> ${escapeHtml(c.dataset.text).slice(0, 60)}${c.dataset.text.length > 60 ? '…' : ''}</div>`).join('');
+  box.classList.remove('hidden');
+}
+
+function escapeAttr(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 function debounce(fn, ms) {
@@ -74,9 +152,16 @@ async function searchStandardsPreview() {
   const box = $('#standardsPreview');
   const topic = $('#topic').value.trim();
   const codesRaw = $('#standardsCodes').value.trim();
-  if (codesRaw) { // 고급 설정에서 코드 직접 지정 시 미리보기 생략(자동조회 안 씀)
-    box.classList.add('hidden');
+  if (codesRaw) { // 코드가 이미 지정됨(단원 목록 선택 또는 고급 설정 직접 입력) — 검색 없이 그대로 확정.
     state.standardsFound = true;
+    const checked = $$('.unit-check:checked');
+    if (checked.length > 0) {
+      onUnitSelectionChange(); // 단원 목록에서 고른 경우 — 체크된 항목 기준으로 미리보기 갱신
+    } else {
+      box.className = 'standards-preview found';
+      box.innerHTML = `✅ 성취기준 코드 직접 지정: <b>${escapeHtml(codesRaw)}</b>`;
+      box.classList.remove('hidden');
+    }
     return;
   }
   if (!topic) { box.classList.add('hidden'); state.standardsFound = null; return; }
