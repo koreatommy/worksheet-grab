@@ -243,7 +243,7 @@ async function callLLM({ provider, apiKey, model, baseUrl, system, user }) {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: model || 'claude-sonnet-4-5-20250929',
+        model: model || 'claude-sonnet-5',
         max_tokens: 8000,
         system,
         messages: [{ role: 'user', content: user }],
@@ -259,7 +259,7 @@ async function callLLM({ provider, apiKey, model, baseUrl, system, user }) {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
-        model: model || 'gpt-5',
+        model: model || 'gpt-5.6-sol',
         messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
         temperature: 0.7,
       }),

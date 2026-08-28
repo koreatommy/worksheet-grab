@@ -107,11 +107,15 @@
     </div>
 
     <div class="form-grid" style="margin-top:16px;">
-      <label class="field wide">
-        <span>모델명</span>
-        <input id="llmModel" type="text" placeholder="claude-sonnet-4-5-20250929">
+      <label class="field wide" id="modelFieldSelect">
+        <span>모델</span>
+        <select id="llmModel"></select>
       </label>
-      <label class="field wide" id="baseUrlField" style="display:none;">
+      <label class="field wide hidden" id="modelFieldCustom">
+        <span>모델명 (직접 입력)</span>
+        <input id="llmModelCustom" type="text" placeholder="model-name">
+      </label>
+      <label class="field wide hidden" id="baseUrlField">
         <span>Base URL (호환 API용)</span>
         <input id="llmBaseUrl" type="text" placeholder="https://api.example.com/v1">
       </label>

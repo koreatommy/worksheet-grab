@@ -2,6 +2,24 @@
 // 서버(/api/*)와만 통신한다. API 키는 이 페이지 메모리에만 있고, 생성 요청 바디에
 // 실려 서버로 전송된 뒤 서버가 즉시 LLM에 전달한다(디스크·로그 미저장).
 
+// 2026-08 기준 최신 모델 목록(각 제공자 공식 문서 확인). 추천 모델을 최상단에 배치.
+const MODEL_OPTIONS = {
+  anthropic: [
+    { value: 'claude-sonnet-5', label: 'Claude Sonnet 5 — 추천(속도·지능 균형)' },
+    { value: 'claude-opus-5', label: 'Claude Opus 5 (복잡한 작업·고성능)' },
+    { value: 'claude-fable-5', label: 'Claude Fable 5 (최상위·장기 에이전트)' },
+    { value: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5 (최속·경제적)' },
+    { value: 'claude-opus-4-5', label: 'Claude Opus 4.5 (이전 세대)' },
+    { value: 'claude-sonnet-4-5', label: 'Claude Sonnet 4.5 (이전 세대)' },
+  ],
+  openai: [
+    { value: 'gpt-5.6-sol', label: 'GPT-5.6 Sol — 추천(플래그십)' },
+    { value: 'gpt-5.6-terra', label: 'GPT-5.6 Terra (균형·비용 절감)' },
+    { value: 'gpt-5.6-luna', label: 'GPT-5.6 Luna (초경제형)' },
+    { value: 'gpt-5.3-codex', label: 'GPT-5.3 Codex (에이전틱 코딩 특화)' },
+  ],
+};
+
 const ARCH_ICON = {
   'experimental-inquiry': '🔬', 'data-interpretation': '📊', 'reading-comprehension': '📖',
   'discussion-decision': '💬', 'concept-structuring': '🧩', 'project-making': '🛠️',
@@ -112,15 +130,24 @@ $$('.llm-card').forEach((card) => {
     $$('.llm-card').forEach((c) => c.classList.remove('selected'));
     card.classList.add('selected');
     state.llmProvider = card.dataset.provider;
-    $('#baseUrlField').style.display = state.llmProvider === 'custom' ? 'flex' : 'none';
-    const placeholders = {
-      anthropic: 'claude-sonnet-4-5-20250929',
-      openai: 'gpt-5',
-      custom: 'model-name',
-    };
-    $('#llmModel').placeholder = placeholders[state.llmProvider] || '';
+    updateModelField();
   });
 });
+
+// 제공자에 따라 "모델 선택" 드롭다운 ↔ "모델명 직접 입력" 텍스트 필드를 전환.
+// custom(호환 API)은 어떤 모델명을 쓸지 알 수 없으므로 직접 입력만 제공한다.
+function updateModelField() {
+  const isCustom = state.llmProvider === 'custom';
+  $('#modelFieldSelect').classList.toggle('hidden', isCustom);
+  $('#modelFieldCustom').classList.toggle('hidden', !isCustom);
+  $('#baseUrlField').classList.toggle('hidden', !isCustom);
+
+  if (!isCustom) {
+    const options = MODEL_OPTIONS[state.llmProvider] || [];
+    $('#llmModel').innerHTML = options.map((o) => `<option value="${o.value}">${o.label}</option>`).join('');
+  }
+}
+updateModelField();
 
 // ── 생성 요청 ────────────────────────────────────────────────────────
 $('#generateBtn').addEventListener('click', async () => {
@@ -143,7 +170,7 @@ $('#generateBtn').addEventListener('click', async () => {
     llm: {
       provider: state.llmProvider === 'custom' ? 'openai' : state.llmProvider,
       apiKey,
-      model: $('#llmModel').value.trim() || undefined,
+      model: (state.llmProvider === 'custom' ? $('#llmModelCustom').value.trim() : $('#llmModel').value) || undefined,
       baseUrl: state.llmProvider === 'custom' ? ($('#llmBaseUrl').value.trim() || undefined) : undefined,
     },
   };
