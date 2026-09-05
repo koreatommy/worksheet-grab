@@ -1,13 +1,30 @@
 {
   "name": "worksheet-grab-web-dashboard",
   "version": "1.0.0",
-  "description": "worksheet-grab CLI를 감싸는 로컬 웹 대시보드 (아키타입 선택 + LLM 저작)",
+  "description": "worksheet-grab CLI를 감싸는 로컬 웹 대시보드 (React + TypeScript)",
   "type": "module",
   "private": true,
   "scripts": {
-    "start": "node server.mjs"
+    "dev": "concurrently -k -n api,web -c blue,green \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "API_PORT=3001 tsx watch server/index.ts",
+    "dev:web": "vite",
+    "build": "vite build",
+    "start": "NODE_ENV=production tsx server/index.ts",
+    "preview": "vite preview"
   },
   "dependencies": {
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^6.1.1",
+    "concurrently": "^10.0.5",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2"
   }
 }

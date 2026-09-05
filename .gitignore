@@ -1,0 +1,12 @@
+# Nested pblsketch/worksheet-grab clone (local dependency)
+worksheet-grab/
+
+# Dependencies & generated output
+node_modules/
+web-dashboard/node_modules/
+web-dashboard/dist/
+web-dashboard/out/
+.DS_Store
+*.log
+.env
+.env.*
